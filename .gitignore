@@ -1,0 +1,23 @@
+# 1. Hệ điều hành & IDE
+.DS_Store
+.idea/
+.vscode/
+
+# 2. File bảo mật (Mật khẩu, Key)
+.env
+credentials.json
+
+# 3. Mobile App (React Native)
+mobile-app/node_modules/
+mobile-app/.expo/
+mobile-app/npm-debug.log*
+
+# 4. Backend Server (Node.js)
+backend-server/node_modules/
+backend-server/npm-debug.log*
+
+# 5. AI Service (Python)
+ai-service/venv/
+ai-service/__pycache__/
+ai-service/*.pyc
+/generated/prisma
