@@ -142,7 +142,7 @@ export function useHealthConnect(): UseHealthConnectReturn {
         },
       ];
 
-      // Gọi API sync metrics
+      // Gọi API sync metrics (không gửi device_id - backend cho phép sync từ Health Connect)
       await api.syncMetrics({
         metrics,
       });
