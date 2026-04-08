@@ -418,19 +418,7 @@ export const api = {
 
       throw new Error('No metrics data');
     } catch {
-      // Fallback: thử Legacy health-data API
-      try {
-        const userData = await getUserData();
-        const userId = userData?.user_id || 'me';
-        const legacyData = await fetchAPI<HealthDataResponse>(`/health-data/${userId}`);
-        if (legacyData && legacyData.heartRate) {
-          return legacyData;
-        }
-      } catch {
-        console.log('ℹ️ [API] Legacy health-data cũng chưa có dữ liệu');
-      }
-
-      // Cuối cùng: trả default (tất cả = 0, không hardcode data giả)
+      // Không có dữ liệu metrics, trả về default (tất cả = 0)
       return {
         heartRate: {
           current: 0,

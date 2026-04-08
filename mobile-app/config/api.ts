@@ -36,7 +36,4 @@ export const ENDPOINTS = {
   HEALTH_TIPS: '/health-tips',
   HEALTH_TIPS_RANDOM: '/health-tips/random',
   HEALTH_TIPS_CATEGORIES: '/health-tips/categories',
-
-  // Legacy (để tương thích)
-  HEALTH_DATA: '/health-data',
 };

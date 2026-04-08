@@ -17,6 +17,7 @@ import { Button } from '../../components';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../constants/Colors';
 import { api } from '../../services/api';
 import { getAllDeviceNames, removeDeviceName, saveDeviceName } from '../../services/deviceStorage';
+import { initHealthConnect, requestHealthPermissions, syncHealthDataToServer, HealthConnectStatus } from '../../services/healthConnect';
 
 type DeviceStatus = 'connected' | 'disconnected' | 'syncing';
 
@@ -43,6 +44,8 @@ export default function DevicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<HealthConnectStatus>('NOT_SUPPORTED');
+  const [syncingHC, setSyncingHC] = useState(false);
 
   // Fetch devices từ API
   const fetchDevices = async () => {
@@ -93,7 +96,13 @@ export default function DevicesScreen() {
 
   useEffect(() => {
     fetchDevices();
+    checkHealthStatus();
   }, []);
+
+  const checkHealthStatus = async () => {
+    const status = await initHealthConnect();
+    setHealthStatus(status);
+  };
 
   const connectedDevices = devices.filter((d) => d.status === 'connected');
   const disconnectedDevices = devices.filter((d) => d.status !== 'connected');
@@ -175,6 +184,86 @@ export default function DevicesScreen() {
 
   const handleAddDevice = () => {
     router.push('/(device)/add');
+  };
+
+  const handleConnectHC = async () => {
+    const granted = await requestHealthPermissions();
+    if (granted) {
+      try {
+        // Đăng ký Health Connect như một thiết bị ảo trên Server để tránh lỗi 403 khi sync
+        await api.addDevice({
+          device_id: 'HEALTH_CONNECT',
+          device_name: 'Google Health Connect',
+          provider: 'android_system'
+        });
+        
+        setHealthStatus('AVAILABLE');
+        Alert.alert('Thành công', 'Đã kết nối với Health Connect!');
+      } catch (err) {
+        console.error('Lỗi đăng ký Health Connect:', err);
+        // Ngay cả khi lỗi đăng ký (có thể đã tồn tại), vẫn set trạng thái nếu quyền đã cấp
+        setHealthStatus('AVAILABLE');
+        Alert.alert('Thông báo', 'Đã cấp quyền Health Connect. Bạn có thể bắt đầu đồng bộ.');
+      }
+    } else {
+      Alert.alert('Thất bại', 'Bạn cần cấp quyền truy cập để sử dụng tính năng này.');
+    }
+  };
+
+  const handleSyncHC = async () => {
+    setSyncingHC(true);
+    try {
+      const success = await syncHealthDataToServer(async (data) => {
+        // Chuyển đổi dữ liệu Health Connect sang MetricsSyncPayload
+        const metrics: any[] = [];
+        const now = new Date().toISOString();
+
+        if (data.heartRate.current > 0) {
+          metrics.push({
+            record_time: now,
+            heart_rate: data.heartRate.current,
+            device_id: 'HEALTH_CONNECT'
+          });
+        }
+        
+        if (data.steps.today > 0) {
+          metrics.push({
+            record_time: now,
+            steps: data.steps.today,
+            distance: data.steps.distance,
+            calories: data.steps.calories,
+            device_id: 'HEALTH_CONNECT'
+          });
+        }
+
+        if (data.sleep.duration > 0) {
+          metrics.push({
+            record_time: data.sleep.startTime || now,
+            sleep_duration: data.sleep.duration * 60, // Phút sang giây
+            device_id: 'HEALTH_CONNECT'
+          });
+        }
+
+        if (metrics.length > 0) {
+          await api.syncMetrics({
+            device_id: 'HEALTH_CONNECT',
+            metrics: metrics
+          });
+        }
+      });
+
+      if (success) {
+        Alert.alert('Thành công', 'Dữ liệu đã được đồng bộ lên máy chủ!');
+        fetchDevices(); // Refresh list to show last sync time
+      } else {
+        Alert.alert('Thông báo', 'Không có dữ liệu mới để đồng bộ.');
+      }
+    } catch (err) {
+      console.error('Lỗi đồng bộ Health Connect:', err);
+      Alert.alert('Lỗi', 'Không thể đồng bộ dữ liệu. Vui lòng thử lại.');
+    } finally {
+      setSyncingHC(false);
+    }
   };
 
   const handleDevicePress = (device: Device) => {
@@ -321,6 +410,65 @@ export default function DevicesScreen() {
           <Text style={styles.infoText}>
             Kết nối thiết bị để đồng bộ dữ liệu sức khỏe tự động qua Health Connect
           </Text>
+        </View>
+
+        {/* Platform Services Section */}
+        <Text style={styles.sectionTitle}>Dịch vụ hệ thống</Text>
+        <View style={styles.deviceCard}>
+          <View style={[styles.deviceIconContainer, { backgroundColor: '#4285F420' }]}>
+            <Ionicons name="logo-google" size={28} color="#4285F4" />
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: healthStatus === 'AVAILABLE' ? Colors.status.success : Colors.neutral.placeholder },
+              ]}
+            />
+          </View>
+
+          <View style={styles.deviceInfo}>
+            <Text style={styles.deviceName}>Google Health Connect</Text>
+            <Text style={styles.deviceProvider}>
+              Android System • Đồng bộ nhịp tim, bước chân...
+            </Text>
+            <View style={styles.deviceMeta}>
+              <View style={styles.metaItem}>
+                <Ionicons
+                  name="ellipse"
+                  size={8}
+                  color={healthStatus === 'AVAILABLE' ? Colors.status.success : Colors.neutral.placeholder}
+                />
+                <Text
+                  style={[styles.metaText, { color: healthStatus === 'AVAILABLE' ? Colors.status.success : Colors.neutral.placeholder }]}
+                >
+                  {healthStatus === 'AVAILABLE' ? 'Đã kết nối' : healthStatus === 'NOT_SUPPORTED' ? 'Không hỗ trợ' : 'Chưa kết nối'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.deviceActions}>
+            {healthStatus === 'AVAILABLE' ? (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleSyncHC}
+                disabled={syncingHC}
+              >
+                {syncingHC ? (
+                  <ActivityIndicator size="small" color={Colors.primary.main} />
+                ) : (
+                  <Ionicons name="sync" size={20} color={Colors.primary.main} />
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handleConnectHC}
+                disabled={healthStatus === 'NOT_SUPPORTED'}
+              >
+                <Ionicons name="add-circle-outline" size={24} color={healthStatus === 'NOT_SUPPORTED' ? Colors.neutral.placeholder : Colors.primary.main} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Loading State */}

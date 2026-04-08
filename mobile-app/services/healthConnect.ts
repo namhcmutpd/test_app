@@ -69,7 +69,7 @@ const HEALTH_PERMISSIONS = [
   { accessType: 'read', recordType: 'SleepSession' },
   { accessType: 'read', recordType: 'OxygenSaturation' },
   { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
-] as const;
+] as any[];
 
 // ===========================================
 // INITIALIZATION
@@ -124,6 +124,8 @@ export const requestHealthPermissions = async (): Promise<boolean> => {
   if (!isInitialized) {
     const status = await initHealthConnect();
     if (status !== 'AVAILABLE') return false;
+    // Chờ 500ms để Native Activity/Delegate thực sự sẵn sàng
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   try {
@@ -154,7 +156,7 @@ export const readHeartRateData = async (
   }
 
   try {
-    const records = await readRecords('HeartRate', {
+    const result = await readRecords('HeartRate', {
       timeRangeFilter: {
         operator: 'between',
         startTime: startDate.toISOString(),
@@ -162,7 +164,7 @@ export const readHeartRateData = async (
       },
     });
 
-    if (!records || records.length === 0) {
+    if (!result.records || result.records.length === 0) {
       console.log('ℹ️ [HealthConnect] Không có dữ liệu nhịp tim');
       return null;
     }
@@ -173,7 +175,7 @@ export const readHeartRateData = async (
     let minBpm = Infinity;
     let maxBpm = 0;
 
-    records.forEach((record: any) => {
+    result.records.forEach((record: any) => {
       record.samples?.forEach((sample: any) => {
         const bpm = sample.beatsPerMinute;
         samples.push({
@@ -243,19 +245,19 @@ export const readStepsData = async (
 
     // Tính tổng steps
     let totalSteps = 0;
-    stepsRecords?.forEach((record: any) => {
+    stepsRecords.records?.forEach((record: any) => {
       totalSteps += record.count || 0;
     });
 
     // Tính tổng distance (meters)
     let totalDistance = 0;
-    distanceRecords?.forEach((record: any) => {
+    distanceRecords.records?.forEach((record: any) => {
       totalDistance += record.distance?.inMeters || 0;
     });
 
     // Tính tổng calories
     let totalCalories = 0;
-    caloriesRecords?.forEach((record: any) => {
+    caloriesRecords.records?.forEach((record: any) => {
       totalCalories += record.energy?.inKilocalories || 0;
     });
 
@@ -283,7 +285,7 @@ export const readSleepData = async (
   }
 
   try {
-    const records = await readRecords('SleepSession', {
+    const result = await readRecords('SleepSession', {
       timeRangeFilter: {
         operator: 'between',
         startTime: startDate.toISOString(),
@@ -291,13 +293,13 @@ export const readSleepData = async (
       },
     });
 
-    if (!records || records.length === 0) {
+    if (!result.records || result.records.length === 0) {
       console.log('ℹ️ [HealthConnect] Không có dữ liệu giấc ngủ');
       return null;
     }
 
     // Lấy session gần nhất
-    const latestSession = records[records.length - 1] as any;
+    const latestSession = result.records[result.records.length - 1] as any;
     
     const startTime = new Date(latestSession.startTime);
     const endTime = new Date(latestSession.endTime);
@@ -339,7 +341,7 @@ export const readOxygenData = async (
   }
 
   try {
-    const records = await readRecords('OxygenSaturation', {
+    const result = await readRecords('OxygenSaturation', {
       timeRangeFilter: {
         operator: 'between',
         startTime: startDate.toISOString(),
@@ -347,7 +349,7 @@ export const readOxygenData = async (
       },
     });
 
-    if (!records || records.length === 0) {
+    if (!result.records || result.records.length === 0) {
       return null;
     }
 
@@ -355,7 +357,7 @@ export const readOxygenData = async (
     let maxOxygen = 0;
     let currentOxygen = 0;
 
-    records.forEach((record: any) => {
+    result.records.forEach((record: any) => {
       const percentage = record.percentage || 0;
       minOxygen = Math.min(minOxygen, percentage);
       maxOxygen = Math.max(maxOxygen, percentage);
